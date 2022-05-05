@@ -1,7 +1,8 @@
 const express = require('express')
 const app = express()
 const PORT = process.env.PORT || 3012
-const upload = require('multer')
+const multer = require('multer')
+const upload = multer()
 const Sequelize = require('sequelize')
 const cors = require('cors')
 
@@ -32,7 +33,7 @@ app.get(`/srvc/usrposts`, async (req,res) => {
         dbres => {
             res.status(200).send(dbres[0])
         }
-    ).catch(err => console.log(err))
+    ).catch(err => res.status(403).send('db error'))
 })
 
 //gets images for posts.
@@ -47,9 +48,49 @@ app.get(`/srvc/images`, async (req,res) => {
         dbres => {
             res.status(200).send(dbres[0])
         }
-    ).catch(err => console.log(err))
+    ).catch(err => res.status(403).send('db error'))
 })
 
+//create a post
+app.post('/srvc/post', upload.single('media_payload'), async (req,res) => {
+    let {postDesc, user, date, userID} = req.body
+    let tmp = req.file
+    let file64 = tmp.buffer.toString('base64')
+
+    
+    let imgID
+    await SQL.query(`
+    INSERT INTO "Images"(img_data, img_type)
+    VALUES('${file64}', '${tmp.mimetype}')
+    RETURNING img_id;
+    `).then(
+        dbres => {
+            imgID = dbres[0]
+        }
+        ).catch(err => console.log(err))
+        
+    let postID
+    await SQL.query(`
+    INSERT INTO "Post"(post_desc, img_id, post_owner)
+    VALUES('${postDesc}', ${imgID[0].img_id}, ${userID})
+    RETURNING post_id;
+    `).then(
+        dbres => {
+            postID = dbres[0]
+        }
+        ).catch(err => console.log(err))
+    
+    await SQL.query(`
+    UPDATE "Users"
+    SET user_posts = user_posts || ${postID[0].post_id}
+    WHERE user_id = ${userID}
+    `).then(
+        dbres => {
+            res.status(200).send(`post created!`)
+        }
+    ).catch(err => console.log(err))
+    
+})
 
 
 app.listen(PORT, () => console.log(`gmcmedia on ${PORT}`))
